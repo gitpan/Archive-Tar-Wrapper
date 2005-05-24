@@ -1,5 +1,5 @@
 ######################################################################
-    Archive::Tar::Wrapper 0.02
+    Archive::Tar::Wrapper 0.03
 ######################################################################
 
 NAME
@@ -16,7 +16,8 @@ SYNOPSIS
             # Iterate over all entries in the archive
         $arch->list_reset(); # Reset Iterator
                              # Iterate through archive
-        while(my($tar_path, $phys_path) = $arch->list_next()) {
+        while(my $entry = $arch->list_next()) {
+            my($tar_path, $phys_path) = @$entry;
             print "$tar_path\n";
         }
 

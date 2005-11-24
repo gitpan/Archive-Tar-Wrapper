@@ -1,5 +1,5 @@
 ######################################################################
-    Archive::Tar::Wrapper 0.05
+    Archive::Tar::Wrapper 0.06
 ######################################################################
 
 NAME
@@ -66,6 +66,16 @@ METHODS
         tar data, the location of the temporary directory can be specified:
 
             my $arch = Archive::Tar::Wrapper->new(tmpdir => '/path/to/tmpdir');
+
+        Additional options can be passed to the "tar" command by using the
+        "tar_read_options" and "tar_write_options" parameters. Example:
+
+             my $arch = Archive::Tar::Wrapper->new(
+                           tar_read_options => "p"
+                        );
+
+        will use "tar xfp archive.tgz" to extract the tarball instead of
+        just "tar xf archive.tgz".
 
     $arch->read("archive.tgz")
         "read()" opens the given tarball, expands it into a temporary

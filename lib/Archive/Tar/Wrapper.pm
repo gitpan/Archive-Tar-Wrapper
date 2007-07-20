@@ -19,7 +19,7 @@ use File::Basename;
 use IPC::Run qw(run);
 use Cwd;
 
-our $VERSION = "0.08";
+our $VERSION = "0.09";
 
 ###########################################
 sub new {
@@ -133,24 +133,44 @@ sub locate {
 ###########################################
 sub add {
 ###########################################
-    my($self, $rel_path, $path_or_stringref, $perm, $user) = @_;
+    my($self, $rel_path, $path_or_stringref, $opts) = @_;
+            
+    if($opts) {
+        if(!ref($opts) or ref($opts) ne 'HASH') {
+            LOGDIE "Option parameter given to add() not a hashref.";
+        }
+    }
+
+    my $perm    = $opts->{perm} if defined $opts->{perm};
+    my $uid     = $opts->{uid} if defined $opts->{uid};
+    my $gid     = $opts->{gid} if defined $opts->{gid};
+    my $binmode = $opts->{binmode} if defined $opts->{binmode};
 
     my $target = File::Spec->catfile($self->{tardir}, $rel_path);
 
+    my $target_dir = dirname($target);
+    mkpath($target_dir, 0, 0755) unless -d $target_dir;
+
     if(ref($path_or_stringref)) {
         open FILE, ">$target" or LOGDIE "Can't open $target ($!)";
-        print FILE $path_or_stringref;
+        if(defined $binmode) {
+            binmode FILE, $binmode;
+        }
+        print FILE $$path_or_stringref;
         close FILE;
     } else {
-        my $target_dir = dirname($target);
-        mkpath($target_dir, 0, 0755) unless -d $target_dir;
         copy $path_or_stringref, $target or
             LOGDIE "Can't copy $path_or_stringref to $target ($!)";
     }
 
-    if(defined $user) {
-        chown $user, $target or
-            LOGDIE "Can't chown $target to $user ($!)";
+    if(defined $uid) {
+        chown $uid, -1, $target or
+            LOGDIE "Can't chown $target uid to $uid ($!)";
+    }
+
+    if(defined $gid) {
+        chown -1, $gid, $target or
+            LOGDIE "Can't chown $target gid to $gid ($!)";
     }
 
     if(defined $perm) {
@@ -158,7 +178,10 @@ sub add {
                 LOGDIE "Can't chmod $target to $perm ($!)";
     }
 
-    if(!defined $user and !defined $perm and !ref($path_or_stringref)) {
+    if(!defined $uid and 
+       !defined $gid and 
+       !defined $perm and
+       !ref($path_or_stringref)) {
         perm_cp($path_or_stringref, $target) or
             LOGDIE "Can't perm_cp $path_or_stringref to $target ($!)";
     }
@@ -508,7 +531,7 @@ To iterate over the list, the following construct can be used:
 If the list of items in the tarfile is big, use C<list_reset()> and
 C<list_next()> instead of C<list_all>.
 
-=item B<$arch-E<gt>add($logic_path, $file_or_stringref)>
+=item B<$arch-E<gt>add($logic_path, $file_or_stringref, [$options])>
 
 Add a new file to the tarball. C<$logic_path> is the virtual path
 of the file within the tarball. C<$file_or_stringref> is either
@@ -516,6 +539,19 @@ a scalar, in which case it holds the physical path of a file
 on disk to be transferred (i.e. copied) to the tarball. Or it is
 a reference to a scalar, in which case its content is interpreted
 to be the data of the file.
+
+If no additional parameters are given, permissions and user/group 
+id settings of a file to be added are copied. If you want different
+settings, specify them in the options hash:
+
+    $arch->add($logic_path, $stringref, 
+               { perm => 0755, uid => 123, gid => 10 });
+
+If $file_or_stringref is a reference to a Unicode string, the C<binmode>
+option has to be set to make sure the string gets written as proper UTF-8
+into the tarfile:
+
+    $arch->add($logic_path, $stringref, { binmode => ":utf8" });
 
 =item B<$arch-E<gt>remove($logic_path)>
 

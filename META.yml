@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:                Archive-Tar-Wrapper
-version:             0.09
+version:             0.10
 abstract:            API wrapper around the 'tar' utility
 license:             ~
 generated_by:        ExtUtils::MakeMaker version 6.31

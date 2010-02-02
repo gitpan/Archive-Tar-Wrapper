@@ -1,17 +1,27 @@
 --- #YAML:1.0
-name:                Archive-Tar-Wrapper
-version:             0.12
-abstract:            API wrapper around the 'tar' utility
-license:             ~
-generated_by:        ExtUtils::MakeMaker version 6.31
-distribution_type:   module
-requires:     
-    Cwd:                           0
-    File::Temp:                    0
-    IPC::Run:                      0
-    Log::Log4perl:                 0
-meta-spec:
-    url:     http://module-build.sourceforge.net/META-spec-v1.2.html
-    version: 1.2
+name:               Archive-Tar-Wrapper
+version:            0.13
+abstract:           API wrapper around the 'tar' utility
 author:
     - Mike Schilli <cpan@perlmeister.com>
+license:            unknown
+distribution_type:  module
+configure_requires:
+    ExtUtils::MakeMaker:  0
+build_requires:
+    ExtUtils::MakeMaker:  0
+requires:
+    Cwd:            0
+    File::Temp:     0
+    IPC::Run:       0
+    Log::Log4perl:  0
+resources:
+    repository:  http://github.com/mschilli/archive-tar-wrapper-perl
+no_index:
+    directory:
+        - t
+        - inc
+generated_by:       ExtUtils::MakeMaker version 6.50
+meta-spec:
+    url:      http://module-build.sourceforge.net/META-spec-v1.4.html
+    version:  1.4

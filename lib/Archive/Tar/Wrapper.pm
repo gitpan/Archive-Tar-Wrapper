@@ -19,7 +19,7 @@ use File::Basename;
 use IPC::Run qw(run);
 use Cwd;
 
-our $VERSION = "0.13";
+our $VERSION = "0.14";
 
 ###########################################
 sub new {
@@ -34,13 +34,29 @@ sub new {
         tar_gnu_read_options => [],
         dirs                 => 0,
         max_cmd_line_args    => 512,
+        ramdisk              => undef,
         %options,
     };
 
-    $self->{tar}     = bin_find("tar") unless $self->{tar};
+    bless $self, $class;
 
-    $self->{tmpdir}  = tempdir($self->{tmpdir} ? 
-                                    (DIR => $self->{tmpdir}) : ());
+    $self->{tar} = bin_find("tar") unless defined $self->{tar};
+    $self->{tar} = bin_find("gtar") unless defined $self->{tar};
+
+    if( ! defined $self->{tar} ) {
+        LOGDIE "tar not found in PATH, please specify location";
+    }
+
+    if(defined $self->{ramdisk}) {
+        my $rc = $self->ramdisk_mount( %{ $self->{ramdisk} } );
+        if(!$rc) {
+            LOGDIE "Mounting ramdisk failed";
+        }
+        $self->{tmpdir} = $self->{ramdisk}->{tmpdir};
+    } else {
+        $self->{tmpdir} = tempdir($self->{tmpdir} ? 
+                                        (DIR => $self->{tmpdir}) : ());
+    }
 
     $self->{tardir} = File::Spec->catfile($self->{tmpdir}, "tar");
     mkpath [$self->{tardir}], 0, 0755 or
@@ -48,7 +64,7 @@ sub new {
 
     $self->{objdir} = tempdir();
 
-    bless $self, $class;
+    return $self;
 }
 
 ###########################################
@@ -379,8 +395,10 @@ sub DESTROY {
 ###########################################
     my($self) = @_;
 
-    rmtree($self->{objdir}) if exists $self->{objdir};
-    rmtree($self->{tmpdir}) if exists $self->{tmpdir};
+    $self->ramdisk_unmount() if defined  $self->{ramdisk};
+
+    rmtree($self->{objdir}) if defined $self->{objdir};
+    rmtree($self->{tmpdir}) if defined $self->{tmpdir};
 }
 
 ######################################
@@ -388,10 +406,21 @@ sub bin_find {
 ######################################
     my($exe) = @_;
 
-    for my $path (split /:/, $ENV{PATH}) {
+    my @paths = split /:/, $ENV{PATH};
+
+    push @paths,
+         "/usr/bin",
+         "/bin",
+         "/usr/sbin",
+         "/opt/bin",
+         "/ops/csw/bin",
+         ;
+
+    for my $path ( @paths ) {
         my $full = File::Spec->catfile($path, $exe);
             return $full if -x $full;
     }
+
     return undef;
 }
 
@@ -407,6 +436,73 @@ sub is_gnu {
     close PIPE;
 
     return $output =~ /GNU/;
+}
+
+###########################################
+sub ramdisk_mount {
+###########################################
+    my($self, %options) = @_;
+
+      # mkdir -p /mnt/myramdisk
+      # mount -t tmpfs -o size=20m tmpfs /mnt/myramdisk
+
+     $self->{mount}  = bin_find("mount") unless $self->{mount};
+     $self->{umount} = bin_find("umount") unless $self->{umount};
+
+     for (qw(mount umount)) {
+         if(!defined $self->{$_}) {
+             LOGWARN "No $_ command found in PATH";
+             return undef;
+         }
+     }
+
+     $self->{ramdisk} = { %options };
+ 
+     $self->{ramdisk}->{size} = "100m" unless 
+       defined $self->{ramdisk}->{size};
+ 
+     if(! defined $self->{ramdisk}->{tmpdir}) {
+         $self->{ramdisk}->{tmpdir} = tempdir( CLEANUP => 1 );
+     }
+ 
+     my @cmd = ($self->{mount}, 
+                "-t", "tmpfs", "-o", "size=$self->{ramdisk}->{size}",
+                "tmpfs", $self->{ramdisk}->{tmpdir});
+
+     INFO "Mounting ramdisk: @cmd";
+     my $rc = system( @cmd );
+ 
+    if($rc) {
+        LOGWARN "Mount command '@cmd' failed: $?";
+        LOGWARN "Note that this only works on Linux and as root";
+        return;
+    }
+ 
+    $self->{ramdisk}->{mounted} = 1;
+ 
+    return 1;
+}
+
+###########################################
+sub ramdisk_unmount {
+###########################################
+    my($self) = @_;
+
+    return if !exists $self->{ramdisk}->{mounted};
+
+    my @cmd = ($self->{umount}, $self->{ramdisk}->{tmpdir});
+
+    INFO "Unmounting ramdisk: @cmd";
+
+    my $rc = system( @cmd );
+        
+    if($rc) {
+        LOGWARN "Unmount command '@cmd' failed: $?";
+        return;
+    }
+
+    delete $self->{ramdisk};
+    return 1;
 }
 
 1;
@@ -492,6 +588,10 @@ Since C<Archive::Tar::Wrapper> creates temporary directories to store
 tar data, the location of the temporary directory can be specified:
 
     my $arch = Archive::Tar::Wrapper->new(tmpdir => '/path/to/tmpdir');
+
+Tremendous performance increases can be achieved if the temporary 
+directory is located on a ram disk. Check the "Using RAM Disks" 
+section below for details.
 
 Additional options can be passed to the C<tar> command by using the
 C<tar_read_options> and C<tar_write_options> parameters. Example:
@@ -637,6 +737,47 @@ Checks if the tar executable is a GNU tar by running 'tar --version'
 and parsing the output for "GNU".
 
 =back
+
+=head1 Using RAM Disks
+
+On Linux, it's quite easy to create a RAM disk and achieve tremendous
+speedups while untarring or modifying a tarball. You can either
+create the RAM disk by hand by running
+
+   # mkdir -p /mnt/myramdisk
+   # mount -t tmpfs -o size=20m tmpfs /mnt/myramdisk
+
+and then feeding the ramdisk as a temporary directory to 
+Archive::Tar::Wrapper, like
+
+   my $tar = Archive::Tar::Wrapper->new( tmpdir => '/mnt/myramdisk' );
+
+or using Archive::Tar::Wrapper's built-in option 'ramdisk':
+
+   my $tar = Archive::Tar::Wrapper->new( 
+       ramdisk => { 
+           type => 'tmpfs',
+           size => '20m',   # 20 MB
+       },
+   );
+
+Only drawback with the latter option is that creating the RAM disk needs
+to be performed as root, which often isn't desirable for security reasons.
+For this reason, Archive::Tar::Wrapper offers a utility functions that
+mounts the ramdisk and returns the temporary directory it's located in:
+
+      # Create new ramdisk (as root):
+    my $tmpdir = Archive::Tar::Wrapper->ramdisk_mount(
+        type => 'tmpfs',
+        size => '20m',   # 20 MB
+    );
+
+      # Delete a ramdisk (as root):
+    Archive::Tar::Wrapper->ramdisk_unmount();
+
+Optionally, the C<ramdisk_mount()> command accepts a C<tmpdir> parameter
+pointing to a temporary directory for the ramdisk if you wish to set it
+yourself instead of letting Archive::Tar::Wrapper create it automatically.
 
 =head1 KNOWN LIMITATIONS
 

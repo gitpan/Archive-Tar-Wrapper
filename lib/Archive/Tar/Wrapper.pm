@@ -19,7 +19,7 @@ use File::Basename;
 use IPC::Run qw(run);
 use Cwd;
 
-our $VERSION = "0.14";
+our $VERSION = "0.15";
 
 ###########################################
 sub new {
@@ -380,6 +380,7 @@ sub write {
 
     if(!$rc) {
          ERROR "@$cmd failed: $err";
+         chdir $cwd or LOGDIE "Cannot chdir to $cwd";
          return undef;
     }
 

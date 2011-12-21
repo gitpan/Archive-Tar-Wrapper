@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:               Archive-Tar-Wrapper
-version:            0.14
+version:            0.15
 abstract:           API wrapper around the 'tar' utility
 author:
     - Mike Schilli <cpan@perlmeister.com>
